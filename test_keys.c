@@ -3,9 +3,8 @@
 #include <stdlib.h>
 #include <termios.h>
 #include <unistd.h>
-
 struct termios orig_termios;
-
+le
 void disableRawMode() {
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
 }

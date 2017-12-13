@@ -26,6 +26,7 @@
 #define CTRL_KEY(k) ((k) & 0x1f)
 
 enum editorKey {
+  CTRL_ENTER = 30,
   BACKSPACE = 127,
   ARROW_LEFT = 1000,
   ARROW_RIGHT,
@@ -35,7 +36,16 @@ enum editorKey {
   HOME_KEY,
   END_KEY,
   PAGE_UP,
-  PAGE_DOWN
+  PAGE_DOWN,
+  CTRL_SHIFT_ENTER,
+  CTRL_ARROW_LEFT,
+  CTRL_ARROW_RIGHT,
+  CTRL_ARROW_UP,
+  CTRL_ARROW_DOWN,
+  CTRL_SHIFT_ARROW_LEFT,
+  CTRL_SHIFT_ARROW_RIGHT,
+  CTRL_SHIFT_ARROW_UP,
+  CTRL_SHIFT_ARROW_DOWN,
 };
 
 /*** data ***/
@@ -101,13 +111,13 @@ void enableRawMode() {
 
 int editorReadKey() {
   int nread;
-  char c;
+  int c;
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
   }
 
   if (c == '\x1b') {
-    char seq[3];
+    char seq[5];
 
     if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
     if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
@@ -124,6 +134,24 @@ int editorReadKey() {
             case '6': return PAGE_DOWN;
             case '7': return HOME_KEY;
             case '8': return END_KEY;
+          }
+        } else if (seq[2] == ';' && seq[1] == '1') {
+          if (read(STDIN_FILENO, &seq[3], 1) != 1) return '\x1b';
+          if (read(STDIN_FILENO, &seq[4], 1) != 1) return '\x1b';
+          if (seq[3] == '5') {
+            switch(seq[4]) {
+              case 'D': return CTRL_ARROW_LEFT;
+              case 'C': return CTRL_ARROW_RIGHT;
+              case 'A': return CTRL_ARROW_UP;
+              case 'B': return CTRL_ARROW_DOWN;
+            }
+          } else if (seq[3] == '6') {
+            switch (seq[4]) {
+              case 'D': return CTRL_SHIFT_ARROW_LEFT;
+              case 'C': return CTRL_SHIFT_ARROW_RIGHT;
+              case 'A': return CTRL_SHIFT_ARROW_UP;
+              case 'B': return CTRL_SHIFT_ARROW_DOWN;  
+            }
           }
         }
       } else {
@@ -143,6 +171,10 @@ int editorReadKey() {
       }
     }
 
+    return '\x1b';
+  } else if (c == 194) {
+    if (read(STDIN_FILENO, &c, 1) != 1) return '\x1b';
+    if (c == 158) return CTRL_SHIFT_ENTER;
     return '\x1b';
   } else {
     return c;
@@ -266,6 +298,22 @@ void editorDelRow(int at) {
   E.dirty++;
 }
 
+void editorMoveRowUp(int at) {
+  if (at <= 0 || at >= E.numrows) return;
+  erow temp = E.row[at-1];
+  E.row[at-1] = E.row[at];
+  E.row[at] = temp;
+  E.dirty++;
+}
+
+void editorMoveRowDown(int at) {
+  if (at < 0 || at >= E.numrows-1) return;
+  erow temp = E.row[at+1];
+  E.row[at+1] = E.row[at];
+  E.row[at] = temp;
+  E.dirty++;
+}
+
 void editorRowAppendString(erow *row, char* s, int len) {
   row->chars = realloc(row->chars, row->size + len + 1);
   memcpy(row->chars + row->size, s, len);
@@ -287,11 +335,11 @@ void editorInsertChar(int c) {
 
 void editorInsertNewLine() {
   if(E.cx == 0) {
-    editorInsertRowAt(E.cy, "", 0);
+    editorInsertRow(E.cy, "", 0);
   } else {
     erow *row = E.row+E.cy;
-    editorInsertRowAt(E.cy+1, row->chars + E.cx, row->size - E.cx);
-    erow *row = E.row+E.cy;
+    editorInsertRow(E.cy+1, row->chars + E.cx, row->size - E.cx);
+    row = E.row+E.cy;
     row->size = E.cx;
     row->chars[row->size] = '\0';
     editorUpdateRow(row);
@@ -312,6 +360,16 @@ void editorDelChar() {
     editorRowAppendString(E.row + E.cy, row->chars, row->size);
     editorDelRow(E.cy+1);
   }
+}
+
+void editorMoveLineUp() {
+  editorMoveRowUp(E.cy);
+  editorMoveCursor(ARROW_UP);
+}
+
+void editorMoveLineDown() {
+  editorMoveRowDown(E.cy);
+  editorMoveCursor(ARROW_DOWN);
 }
 
 /*** file i/o ***/
@@ -553,6 +611,34 @@ void editorMoveCursor(int key) {
         E.cy++;
       }
       break;
+    case CTRL_ARROW_LEFT:
+      if (E.cx == 0) {
+        editorMoveCursor(ARROW_LEFT);
+      } else if (row) {
+        int isCurrAlnum = isalnum(row->chars[E.cx-1]) ? 1 : 0;
+        while(E.cx > 0 && (isalnum(row->chars[E.cx-1]) ? 1 : 0) == isCurrAlnum) {
+          E.cx--;
+        }
+      }
+      break;
+    case CTRL_ARROW_RIGHT:
+      if (row) {
+        if (E.cx == row->size) {
+          editorMoveCursor(ARROW_RIGHT);
+        } else {
+          int isCurrAlnum = isalnum(row->chars[E.cx]) ? 1 : 0;
+          while(E.cx < row->size && (isalnum(row->chars[E.cx]) ? 1 : 0) == isCurrAlnum) {
+            E.cx++;
+          }
+        }
+      }
+      break;
+      case CTRL_SHIFT_ARROW_DOWN:
+        editorMoveLineDown();
+        break;
+      case CTRL_SHIFT_ARROW_UP:
+        editorMoveLineUp();
+        break;
   }
 
   row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
@@ -570,6 +656,17 @@ void editorProcessKeypress() {
     case '\r':
       editorInsertNewLine();
       break;
+    case CTRL_ENTER:
+      if (E.cy < E.numrows)
+        E.cx = E.row[E.cy].size;
+      editorInsertNewLine();
+      break;
+    case CTRL_SHIFT_ENTER:
+      E.cx = 0;
+      editorInsertNewLine();
+      E.cy--;
+      break;
+
     case CTRL_KEY('q'):
       if (E.dirty && quit_times > 0) {
         editorSetStatusMessage("Warning! File not saved. "
@@ -617,10 +714,29 @@ void editorProcessKeypress() {
       }
       break;
 
+    case CTRL_ARROW_UP:
+      if (E.rowoff > 0) {
+        E.rowoff--;
+        if (E.cy > E.rowoff + E.screenrows)
+          editorMoveCursor(ARROW_UP);
+      }
+      break;
+    case CTRL_ARROW_DOWN:
+      if (E.rowoff < E.numrows) {
+        E.rowoff++;
+        if (E.cy < E.rowoff)
+          editorMoveCursor(ARROW_DOWN);
+      }
+      break;
+
     case ARROW_UP:
     case ARROW_DOWN:
     case ARROW_LEFT:
     case ARROW_RIGHT:
+    case CTRL_ARROW_RIGHT:
+    case CTRL_ARROW_LEFT:
+    case CTRL_SHIFT_ARROW_DOWN:
+    case CTRL_SHIFT_ARROW_UP:
       editorMoveCursor(c);
       break;
 
