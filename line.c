@@ -6,8 +6,8 @@
 
 void line_print(const Line *line)
 {
-    printf("%zu : ", line->size);
-    for(size_t i = 0; i < line->size+1; ++i)
+    printf("%d : ", line->size);
+    for(int i = 0; i < line->size+1; ++i)
     {
         if (line->letters[i] == '\0') printf("\\0");
         else putchar(line->letters[i]);
@@ -18,14 +18,14 @@ void line_print(const Line *line)
 void line_init(Line *line)
 {
     line->size = 0;
-    line->letters = calloc(1, sizeof(Letter));
+    line->letters = NULL;
 }
 void line_delete(Line *line)
 {
     free(line->letters);
 }
 
-void line_insert_letter_at(Line *line, size_t at, Letter l)
+void line_insert_letter_at(Line *line, int at, Letter l)
 {
     if (at > line->size) at = line->size;
 
@@ -35,14 +35,14 @@ void line_insert_letter_at(Line *line, size_t at, Letter l)
     line->letters[at] = l;
     line->size++;
 }
-void line_delete_letter_at(Line *line, size_t at)
+void line_delete_letter_at(Line *line, int at)
 {
     if (at > line->size - 1) at = line->size - 1;
     memmove(line->letters + at, line->letters + at + 1, line->size - at);
     line->size--;
 }
 
-void line_append_str(Line *line, const char* buf, size_t buflen)
+void line_append_str(Line *line, const char* buf, int buflen)
 {
     line->letters = realloc(line->letters, sizeof(Letter) * (line->size + buflen + 1));
 

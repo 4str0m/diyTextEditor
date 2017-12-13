@@ -4,47 +4,49 @@
 #include <stdio.h>
 #include <memory.h>
 
-Page* page_create()
+int page_init(Page *page, int max_rows)
 {
-    Page *new_p = calloc(1, sizeof(Page));
-
-    new_p->lines_num = 1;
-    new_p->lines = calloc(1, sizeof(Line));
-    line_init(new_p->lines);
-    return new_p;
+    page->col = page->row = 0;
+    page->num_lines = 0;
+    page->row_off = 0;
+    page->max_rows = max_rows;
+    page->lines = NULL;
+    /*
+    page->num_lines = 1;
+    page->lines = calloc(1, sizeof(Line));
+    line_init(page->lines);
+    */
+    return 0;
 }
 void page_delete(Page *page)
 {
-    for(size_t i = 0; i < page->lines_num; ++i)
+    for(int i = 0; i < page->num_lines; ++i)
         line_delete(page->lines + i);
     free(page->lines);
-    free(page);
 }
 
-void page_print(const Page *page)
+void page_delete_line_at(Page *page, int at)
 {
-    printf("%zu [%zu/%zu]\n", page->lines_num, page->col, page->row);
-    for (size_t i = 0; i < page->lines_num; ++i)
-        line_print(page->lines + i);
+    if (at > page->num_lines - 1) at = page->num_lines - 1;
+
+    memmove(page->lines + at, page->lines + at + 1, page->num_lines - at - 1);
+    page->num_lines--;
 }
 
-void page_insert_line_at(Page *page, size_t at, const char *buf, size_t len)
+void page_insert_line_at(Page *page, int at)
 {
-    if (at > page->lines_num) at = page->lines_num;
+    if (at > page->num_lines) at = page->num_lines;
 
-    page->lines = realloc(page->lines, sizeof(Line) * (page->lines_num + 1));
-    memmove(page->lines + at + 1, page->lines + at, page->lines_num - at);
-    page->lines_num++;
+    page->lines = realloc(page->lines, sizeof(Line) * (page->num_lines + 1));
+    memmove(page->lines + at + 1, page->lines + at, page->num_lines - at);
+    page->num_lines++;
 
     line_init(page->lines + at);
-    line_append_str(page->lines + at, buf, len);
 }
-void page_delete_line_at(Page *page, size_t at)
+void page_append_line(Page *page, const char *buf, int len)
 {
-    if (at > page->lines_num - 1) at = page->lines_num - 1;
-
-    memmove(page->lines + at, page->lines + at + 1, page->lines_num - at - 1);
-    page->lines_num--;
+    page_insert_line_at(page, page->num_lines);
+    line_append_str(page->lines + page->num_lines - 1, buf, len);
 }
 
 void page_insert_letter(Page *page, Letter l)
@@ -57,31 +59,19 @@ void page_delete_letter(Page *page)
     line_delete_letter_at(page->lines + page->row, --page->col);
 }
 
-void page_insert_line(Page *page)
+void page_move_cursor_left(Page *page)
 {
-    page_insert_line_at(page, page->row + 1, page->lines[page->row].letters + page->col, page->lines[page->row].size - page->col);
-    //printf("%zu, %zu\n", page->lines[page->row].size, page->col);
-    page->lines[page->row].letters[page->col] = '\0';
-    page->lines[page->row].size = page->col;
-
-    page->col = 0;
-    ++page->row;
-}
-
-void page_move_cursor_left(Page *page, size_t n)
-{
-    if (n == 0 || (page->col == 0 && page->row == 0)) return;
+    if (page->col == 0 && page->row == 0) return;
     else
     {
         if (page->col == 0) page->col = page->lines[--page->row].size;
         else --page->col;
-        page_move_cursor_left(page, n - 1);
     }
 }
-void page_move_cursor_right(Page *page, size_t n)
+void page_move_cursor_right(Page *page)
 {
-    size_t size = page->lines[page->row].size;
-    if (n == 0 || (page->col == size && page->row == page->lines_num-1)) return;
+    int size = page->lines[page->row].size;
+    if (page->col == size && page->row == page->num_lines-1) return;
     else
     {
         if (page->col == size)
@@ -90,29 +80,41 @@ void page_move_cursor_right(Page *page, size_t n)
             ++page->row;
         }
         else ++page->col;
-        page_move_cursor_right(page, n - 1);
     }
 }
 
-void page_move_cursor_up(Page *page, size_t n)
+void page_move_cursor_up(Page *page)
 {
-    if (n == 0) return;
     if (page->row == 0) page->col = 0;
     else
     {
-        size_t size = page->lines[--page->row].size;
+        int size = page->lines[--page->row].size;
         if (page->col > size) page->col = size;
-        page_move_cursor_up(page, n - 1);
     }
 }
-void page_move_cursor_down(Page *page, size_t n)
+void page_move_cursor_down(Page *page)
 {
-    if (n == 0) return;
-    if (page->row == page->lines_num-1) page->col = page->lines[page->lines_num-1].size;
+    if (page->row == page->num_lines-1)
+        page->col = page->lines[page->num_lines-1].size;
     else
     {
-        size_t size = page->lines[++page->row].size;
+        int size = page->lines[++page->row].size;
         if (page->col > size) page->col = size;
-        page_move_cursor_down(page, n - 1);
     }
+}
+
+void page_move_cursor_end(Page *page)
+{
+    page->col = page->lines[page->row].size;
+}
+void page_move_cursor_home(Page *page)
+{
+    page->col = 0;
+}
+
+void page_scroll(Page *page) {
+    if (page->row < page->row_off)
+        page->row_off = page->row;
+    if (page->row >= page->row_off + page->max_rows)
+        page->row_off = page->row - page->max_rows + 1;
 }
