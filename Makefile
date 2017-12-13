@@ -1,7 +1,5 @@
-
 CC = gcc
 CFLAGS = -D_DEBUG -std=c99 -Wall -Wextra -pedantic
-
 
 all: kilo
 
